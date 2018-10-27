@@ -1,0 +1,72 @@
+---
+title: HW7
+author: Travis Nestor
+output: pdf_document
+---
+  
+6.3.1)
+Given a normal distribution $f(x) = \delta N(\mu_1,\sigma_1 ^2) + (1 - \delta) N(\mu_2, \sigma_2 ^2)$
+The log-likelihood function becomes ($\theta = (\mu_1,\mu_2,\sigma_1,\sigma_2)$):
+$$\ell(\theta) = \Pi[_{i=1}^n\delta \frac{1}{\sqrt{2\pi}\sigma_1}e^{-\frac{(x-\mu_1) ^2}{2\sigma_1^2}} + (1 - \delta) \frac{1}{\sqrt{2\pi}\sigma_2}e^{-\frac{(x-\mu_2) ^2}{2\sigma_2^2}}]$$
+
+The priors for $\mu_1, \mu_2$ are $N(0,100)$ and the priors for $\sigma$ are $\sigma_1^{-2} = \sigma_2^{-2} = \Gamma(.5, 10)$ which is an inverse gamma
+And assumed parameters are $\delta = 0.7, \sigma_1 = \sigma_2 = 0.5, \mu_1 =7, \mu_2 = 10$
+
+Therefore, the posterior distribution becomes (using $\ell(\theta)$ as above):
+$$ q(x|\theta) = \ell(\theta) * \Gamma_1^{-1}(0.5, 10) * \Gamma_2^{-1}(0.5, 10) * N_1(0,100) * N_2(0,100)$$
+
+
+
+```{R}
+
+
+delta <- 0.7 # true value to be estimated based on the data
+n <- 100
+set.seed(123)
+u <- rbinom(n, prob = delta, size = 1)
+y <- rnorm(n, ifelse(u == 1, 7, 10), 0.5)
+
+
+library("invgamma")
+mc.post <- function(delta, mu1, mu2, sigma1, sigma2, x=y){
+  llk <- sum(log((delta * dnorm(x, mu1, sqrt(sigma1))))) + sum(log((delta * dnorm(x, mu2, sqrt(sigma2)))))
+  mc.mu1 <- dnorm(mu1, 0, 10, log = TRUE)
+  mc.mu2 <- dnorm(mu2, 0, 10, log = TRUE)
+  mc.sigma1 <- dinvgamma(sigma1, 0.5, 10, log = TRUE)   
+  mc.sigma2 <- dinvgamma(sigma2, 0.5, 10, log = TRUE)
+  
+  return(llk + mc.mu1 + mc.mu2 + mc.sigma1 + mc.sigma2)
+}
+
+library("HI")
+gibbs <- function(delta.g, mu1.g, mu2.g, sigma1.g, sigma2.g, x=y, n){
+  gib.mat <- matrix(nrow = n, ncol = 5)
+  init.g <- c(delta.g, mu1.g, mu2.g, sigma1.g, sigma2.g)
+  for (i in 1:n) {
+    gib.mat[i,1] <- arms(delta.g, mc.post, function(x,...)(x>0)*(x<1), 1, mu1 = init.g[2], mu2 = init.g[3], sigma1 = init.g[4], sigma2 = init.g[5] )
+    init.g[1] <- gib.mat[i,1]
+    
+    gib.mat[i,2] <- arms(mu1.g, mc.post, function(x,...)(x>-100)*(x<100), 1, d = init.g[1], mu2 = init.g[3], sigma1 = init.g[4], sigma2 = init.g[5] )
+    init.g[2] <- gib.mat[i,2]
+    
+    gib.mat[i,3] <- arms(mu2.g, mc.post, function(x,...)(x>-100)*(x<100), 1, d = init.g[1], mu1 = init.g[2], sigma1 = init.g[4], sigma2 = init.g[5] )
+    init.g[3] <- gib.mat[i,3]
+    
+    gib.mat[i,4] <- arms(sigma1.g, mc.post, function(x,...)(x>0)*(x<100), 1, d = init.g[1], mu2 = init.g[3], mu1 = init.g[2], sigma2 = init.g[5] )
+    init.g[4] <- gib.mat[i,4]
+    
+    gib.mat[i,5] <- arms(sigma2.g, mc.post, function(x,...)(x>0)*(x<100), 1, d = init.g[1], mu2 = init.g[3], sigma1 = init.g[4], mu1 = init.g[2] )
+    init.g[5] <- gib.mat[i,5]
+  }
+  gib.mat
+}
+  
+
+mygibbs <- gibbs(0.5, 5, 5, 1, 1, x=x, 2500)[-(1:500),]    #burn-in = 500
+hist(mygibbs[,1], xlab = "delta", main = "Histogram of delta")
+hist(mygibbs[,2], xlab = "mu1", main = "Histogram of mu1")
+hist(mygibbs[,3], xlab = "mu2", main = "Histogram of mu2")
+hist(mygibbs[,4], xlab = "sigma1", main = "Histogram of sigma1")
+hist(mygibbs[,5], xlab = "sigma2", main = "Histogram of sigma2")
+
+```
